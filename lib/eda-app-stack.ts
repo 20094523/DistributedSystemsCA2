@@ -43,7 +43,7 @@ export class EDAAppStack extends cdk.Stack {
       receiveMessageWaitTime: cdk.Duration.seconds(10),
       deadLetterQueue: {
         queue: rejectionQueue,
-        maxReceiveCount: 5,
+        maxReceiveCount: 1,
       }
     });
 
