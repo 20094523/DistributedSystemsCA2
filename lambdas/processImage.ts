@@ -9,13 +9,13 @@ import {
 } from "@aws-sdk/client-s3";
 //dynamoDB imports
 import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { SES_REGION } from "env";
 
 
 //ddb client same as labs.
 
-const ddbDocClient = new DynamoDBClient();
+const ddb = createDDbDocClient();
 const s3 = new S3Client();
 
 export const handler: SQSHandler = async (event) => {
@@ -50,10 +50,10 @@ export const handler: SQSHandler = async (event) => {
             Bucket: srcBucket,
             Key: srcKey,
           };
-          
+
           await s3.send(new GetObjectCommand(params));
 
-          await ddbDocClient.send(new PutItemCommand({
+          await ddb.send(new PutItemCommand({
             TableName: "Images",
             Item: {
               "ImageName": { S: srcKey }, 
@@ -70,17 +70,14 @@ export const handler: SQSHandler = async (event) => {
   }
 };
 
-//same as labs
 function createDDbDocClient() {
-  const ddbClient = new DynamoDBClient({ region: SES_REGION });
+  const ddbClient = new DynamoDBClient({region: process.env.REGION});
   const marshallOptions = {
-    convertEmptyValues: true,
-    removeUndefinedValues: true,
-    convertClassInstanceToMap: true,
+      convertEmptyValues: true, removeUndefinedValues: true, convertClassInstanceToMap: true,
   };
   const unmarshallOptions = {
-    wrapNumbers: false,
+      wrapNumbers: false,
   };
-  const translateConfig = { marshallOptions, unmarshallOptions };
+  const translateConfig = {marshallOptions, unmarshallOptions};
   return DynamoDBDocumentClient.from(ddbClient, translateConfig);
 }

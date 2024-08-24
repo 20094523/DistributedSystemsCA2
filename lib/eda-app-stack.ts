@@ -10,7 +10,7 @@ import * as subs from "aws-cdk-lib/aws-sns-subscriptions";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import { Construct } from "constructs";
-import { SES_REGION } from "env";
+import { SES_REGION } from "../env";
 
 export class EDAAppStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -24,6 +24,7 @@ export class EDAAppStack extends cdk.Stack {
 
     //create table same as labs. images will be added using commands
     const imagesTable = new dynamodb.Table(this, "ImagesTable", {
+      stream: dynamodb.StreamViewType.NEW_AND_OLD_IMAGES,
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       partitionKey: { name: "ImageName", type: dynamodb.AttributeType.STRING },
       removalPolicy: cdk.RemovalPolicy.DESTROY,
@@ -76,8 +77,21 @@ export class EDAAppStack extends cdk.Stack {
     }
     );
 
+    const processDeleteFn = new lambdanode.NodejsFunction(this, "process-delete-function",{
+      runtime: lambda.Runtime.NODEJS_18_X,
+      entry: `${__dirname}/../lambdas/processDelete.ts`,
+      timeout: cdk.Duration.seconds(3),
+      memorySize: 128,
+    }
+    );
+
+
     const newImageTopic = new sns.Topic(this, "NewImageTopic", {
       displayName: "New Image topic",
+    });
+
+    const deleteAndUpdate = new sns.Topic(this, "DeleteAndUpdate", {
+      displayName: "Topic for deleting and updating",
     });
 
     // Event triggers
@@ -87,11 +101,18 @@ export class EDAAppStack extends cdk.Stack {
       new s3n.SnsDestination(newImageTopic)
     );
 
+    imagesBucket.addEventNotification(
+      s3.EventType.OBJECT_REMOVED,
+      new s3n.SnsDestination(deleteAndUpdate)
+    );
+
     newImageTopic.addSubscription(new subs.SqsSubscription(imageProcessQueue));
 
     newImageTopic.addSubscription(new subs.SqsSubscription(mailerQ));
 
-    newImageTopic.addSubscription(new subs.SqsSubscription(rejectionQueue))
+    newImageTopic.addSubscription(new subs.SqsSubscription(rejectionQueue));
+
+    deleteAndUpdate.addSubscription(new subs.LambdaSubscription(processDeleteFn));
 
     const newImageEventSource = new events.SqsEventSource(imageProcessQueue, {
       batchSize: 5,
@@ -118,6 +139,7 @@ export class EDAAppStack extends cdk.Stack {
 
     imagesBucket.grantRead(processImageFn);
     imagesTable.grantReadWriteData(processImageFn);
+    imagesTable.grantReadWriteData(processDeleteFn);
 
     mailerFn.addToRolePolicy(
       new iam.PolicyStatement({
@@ -152,6 +174,10 @@ export class EDAAppStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, "bucketName", {
       value: imagesBucket.bucketName,
+    });
+
+    new cdk.CfnOutput(this, "deleteAndUpdate", {
+      value: deleteAndUpdate.topicArn,
     });
 
   }
