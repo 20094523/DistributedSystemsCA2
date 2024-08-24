@@ -28,8 +28,8 @@ export const handler: SQSHandler = async (event: any) => {
         const srcBucket = s3e.bucket.name;
         const srcKey = decodeURIComponent(s3e.object.key.replace(/\+/g, " "));
         try {
-          const message= `We received your Image. Its URL is s3://${srcBucket}/${srcKey}`;
-          await sendConfirmationEmail(message);
+          const message= `We received your Image, but its a wrong type. Its URL is s3://${srcBucket}/${srcKey}`;
+          await sendRejectionEmail(message);
         } catch (error: unknown) {
           console.log("ERROR is: ", error);
         }
@@ -38,7 +38,7 @@ export const handler: SQSHandler = async (event: any) => {
   }
 };
 
-async function sendConfirmationEmail(message : string){
+async function sendRejectionEmail(message : string){
   const parameters: SendEmailCommandInput = {
     Destination: {
       ToAddresses: [SES_EMAIL_TO],
