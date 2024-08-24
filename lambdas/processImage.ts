@@ -21,8 +21,11 @@ export const handler: SQSHandler = async (event) => {
   console.log("Event ", event);
   for (const record of event.Records) {
     const recordBody = JSON.parse(record.body);
+    const snsMessage = JSON.parse(recordBody.Message);
+
     console.log('Raw SNS message ',JSON.stringify(recordBody))
     if (recordBody.Records) {
+      console.log("Record body ", JSON.stringify(snsMessage));
       for (const messageRecord of recordBody.Records) {
         const s3e = messageRecord.s3;
         const srcBucket = s3e.bucket.name;
