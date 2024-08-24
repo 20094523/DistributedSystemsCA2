@@ -8,13 +8,14 @@ import {
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
 //dynamoDB imports
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { SES_REGION } from "env";
 
 
 //ddb client same as labs.
-const ddbDocClient = createDDbDocClient();
+
+const ddbDocClient = new DynamoDBClient();
 const s3 = new S3Client();
 
 export const handler: SQSHandler = async (event) => {
@@ -23,7 +24,7 @@ export const handler: SQSHandler = async (event) => {
     const recordBody = JSON.parse(record.body);
     const snsMessage = JSON.parse(recordBody.Message);
 
-    console.log('Raw SNS message ',JSON.stringify(recordBody))
+    console.log('Raw SNS message ', JSON.stringify(recordBody))
     if (recordBody.Records) {
       console.log("Record body ", JSON.stringify(snsMessage));
       for (const messageRecord of recordBody.Records) {
@@ -43,16 +44,27 @@ export const handler: SQSHandler = async (event) => {
           console.log(`Unsupported image type: ${imageType}`);
           throw new Error("Unsupported image type: ${imageType. ");
         }
+        //gets image from bucket, then adds to database
+        try {
+          const params: GetObjectCommandInput = {
+            Bucket: srcBucket,
+            Key: srcKey,
+          };
+          
+          await s3.send(new GetObjectCommand(params));
 
-        //add to dynamoDB table
-        const putCommand = new PutCommand({
-          TableName: "Images",
-          Item: {
-            ImageName: srcKey,
-          },
-        });
-
-        await ddbDocClient.send(putCommand);
+          await ddbDocClient.send(new PutItemCommand({
+            TableName: "Images",
+            Item: {
+              "ImageName": { S: srcKey }, 
+              'Bucket': { S: srcBucket },
+            }
+          }))
+        }
+        catch (error) {
+          console.error("Error adding to dynamoDB.", error);
+          throw error;
+      }
       }
     }
   }

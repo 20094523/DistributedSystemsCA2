@@ -8,9 +8,9 @@ import * as sqs from "aws-cdk-lib/aws-sqs";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as subs from "aws-cdk-lib/aws-sns-subscriptions";
 import * as iam from "aws-cdk-lib/aws-iam";
-import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
-
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import { Construct } from "constructs";
+import { SES_REGION } from "env";
 
 export class EDAAppStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -34,15 +34,19 @@ export class EDAAppStack extends cdk.Stack {
     const mailerQ = new sqs.Queue(this, "mailer-queue", {
       receiveMessageWaitTime: cdk.Duration.seconds(10),
     });
-
-    const imageProcessQueue = new sqs.Queue(this, "img-created-queue", {
-      receiveMessageWaitTime: cdk.Duration.seconds(10),
-    });
-
     const rejectionQueue = new sqs.Queue(this, "rejection-queue", {
       queueName: "RejectionQueue",
       receiveMessageWaitTime: cdk.Duration.seconds(10),
-    })
+    });
+
+    const imageProcessQueue = new sqs.Queue(this, "img-created-queue", {
+      receiveMessageWaitTime: cdk.Duration.seconds(10),
+      deadLetterQueue: {
+        queue: rejectionQueue,
+        maxReceiveCount: 5,
+      }
+    });
+
 
     // Lambda functions
 
@@ -65,6 +69,10 @@ export class EDAAppStack extends cdk.Stack {
       entry: `${__dirname}/../lambdas/processImage.ts`,
       timeout: cdk.Duration.seconds(15),
       memorySize: 128,
+      environment: {
+        TABLE_NAME: "Images",
+        REGION: SES_REGION,
+      }
     }
     );
 
@@ -103,7 +111,7 @@ export class EDAAppStack extends cdk.Stack {
     processImageFn.addEventSource(newImageEventSource);
 
     mailerFn.addEventSource(newImageMailEventSource);
-    
+
     rejectionMailerFn.addEventSource(newImageEventRejectSource);
 
     // Permissions
