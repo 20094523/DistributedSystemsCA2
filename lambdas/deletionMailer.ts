@@ -6,8 +6,6 @@ import {
     SendEmailCommandInput,
 } from "@aws-sdk/client-ses";
 
-//removed parameters, only message is sent. will make similar code to this for rejection mailer
-
 if (!SES_EMAIL_TO || !SES_EMAIL_FROM || !SES_REGION) {
     throw new Error(
         "Please add the SES_EMAIL_TO, SES_EMAIL_FROM and SES_REGION environment variables in an env.js file located in the root directory"
@@ -22,7 +20,7 @@ type ContactDetails = {
 
 const client = new SESClient({ region: SES_REGION });
 
-export const handler: DynamoDBStreamHandler = async (event: any) => {
+export const handler: DynamoDBStreamHandler = async (event) => {
     console.log("Event ", JSON.stringify(event));
     for (const record of event.Records) {
 

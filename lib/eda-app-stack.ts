@@ -30,7 +30,7 @@ export class EDAAppStack extends cdk.Stack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       partitionKey: { name: "ImageName", type: dynamodb.AttributeType.STRING },
       removalPolicy: cdk.RemovalPolicy.DESTROY,
-      tableName: "Images",
+      tableName: "ImagesTable",
     });
 
     // Integration infrastructure
@@ -65,7 +65,7 @@ export class EDAAppStack extends cdk.Stack {
       entry: `${__dirname}/../lambdas/rejectionMailer.ts`,
     });
 
-    const deleteMailerFn = new lambdanode.NodejsFunction(this, "rejection-mailer-function", {
+    const deleteMailerFn = new lambdanode.NodejsFunction(this, "deletion-mailer-function", {
       runtime: lambda.Runtime.NODEJS_18_X,
       memorySize: 1024,
       timeout: cdk.Duration.seconds(3),
@@ -76,9 +76,9 @@ export class EDAAppStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_18_X,
       entry: `${__dirname}/../lambdas/processImage.ts`,
       timeout: cdk.Duration.seconds(15),
-      memorySize: 128,
+      memorySize: 1024,
       environment: {
-        TABLE_NAME: "Images",
+        TABLE_NAME: "ImagesTable",
         REGION: SES_REGION,
       }
     }
@@ -88,7 +88,7 @@ export class EDAAppStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_18_X,
       entry: `${__dirname}/../lambdas/processDelete.ts`,
       timeout: cdk.Duration.seconds(3),
-      memorySize: 128,
+      memorySize: 1024,
     }
     );
 
@@ -152,7 +152,7 @@ export class EDAAppStack extends cdk.Stack {
       new subs.LambdaSubscription(processUpdateFn, {
         filterPolicy: {
           comment_type: sns.SubscriptionFilter.stringFilter({
-            allowlist: ['Caption']
+            allowlist: ['Description']
           }),
         },
       })
@@ -160,16 +160,16 @@ export class EDAAppStack extends cdk.Stack {
 
     mainTopic.addSubscription(new subs.LambdaSubscription(mailerFn, {
       filterPolicyWithMessageBody: {
-          Records: sns.FilterOrPolicy.policy({
-              eventName: sns.FilterOrPolicy.filter(
-                  sns.SubscriptionFilter.stringFilter({
-                      allowlist: ["ObjectCreated:Put"],
-                  })
-              ),
-          })
+        Records: sns.FilterOrPolicy.policy({
+          eventName: sns.FilterOrPolicy.filter(
+            sns.SubscriptionFilter.stringFilter({
+              allowlist: ["ObjectCreated:Put"],
+            })
+          ),
+        })
       }
-  })
-);
+    })
+    );
 
     const newImageEventSource = new events.SqsEventSource(imageProcessQueue, {
       batchSize: 5,
@@ -189,12 +189,12 @@ export class EDAAppStack extends cdk.Stack {
       startingPosition: StartingPosition.TRIM_HORIZON,
       batchSize: 5,
       bisectBatchOnError: true,
-  }));
+    }));
 
     // Permissions
 
     imagesBucket.grantRead(processImageFn);
-    imagesTable.grantReadWriteData(processImageFn);
+    imagesTable.grantWriteData(processImageFn);
     imagesTable.grantReadWriteData(processDeleteFn);
     imagesTable.grantReadWriteData(processUpdateFn);
 
@@ -213,7 +213,7 @@ export class EDAAppStack extends cdk.Stack {
     processImageFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ["sqs:SendMessage"],
       resources: [rejectionQueue.queueArn]
-  }));
+    }));
 
     rejectionMailerFn.addToRolePolicy(
       new iam.PolicyStatement({
@@ -238,11 +238,6 @@ export class EDAAppStack extends cdk.Stack {
         resources: ["*"],
       })
     );
-
-    processImageFn.addToRolePolicy(new iam.PolicyStatement({
-      actions: ["sqs:SendMessage"],
-      resources: [rejectionQueue.queueArn]
-    }));
 
     // Output
 

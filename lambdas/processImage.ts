@@ -23,26 +23,18 @@ export const handler: SQSHandler = async (event) => {
     const snsMessage = JSON.parse(recordBody.Message);
 
     console.log('Raw SNS message ', JSON.stringify(recordBody))
-    if (recordBody.Records) {
+    if (snsMessage.Records) {
       console.log("Record body ", JSON.stringify(snsMessage));
-      for (const messageRecord of recordBody.Records) {
+      for (const messageRecord of snsMessage.Records) {
         const s3e = messageRecord.s3;
         const srcBucket = s3e.bucket.name;
         // Object key may have spaces or unicode non-ASCII characters.
         const srcKey = decodeURIComponent(s3e.object.key.replace(/\+/g, " "));
         // Infer the image type from the file suffix.
-        const typeMatch = srcKey.match(/\.([^.]*)$/);
-        if (!typeMatch) {
-          console.log("Could not determine the image type.");
-          throw new Error("Could not determine the image type. ");
-        }
-        // Check that the image type is supported
-        const imageType = typeMatch[1].toLowerCase();
-        if (imageType != "jpeg" && imageType != "png") {
-          console.log(`Unsupported image type: ${imageType}`);
+        if (!srcKey.endsWith(".jpeg") && !srcKey.endsWith(".png")) {
           throw new Error("Unsupported image type: ${imageType. ");
         }
-        //gets image from bucket, then adds to database
+
         try {
           const params: GetObjectCommandInput = {
             Bucket: srcBucket,
@@ -52,9 +44,9 @@ export const handler: SQSHandler = async (event) => {
           await s3.send(new GetObjectCommand(params));
 
           await ddb.send(new PutItemCommand({
-            TableName: "Images",
+            TableName: "ImagesTable",
             Item: {
-              "ImageName": { S: srcKey }, 
+              "ImageName": { S: srcKey },
               'Bucket': { S: srcBucket },
             }
           }))
@@ -62,20 +54,20 @@ export const handler: SQSHandler = async (event) => {
         catch (error) {
           console.error("Error adding to dynamoDB.", error);
           throw error;
-      }
+        }
       }
     }
   }
 };
 
 function createDDbDocClient() {
-  const ddbClient = new DynamoDBClient({region: SES_REGION});
+  const ddbClient = new DynamoDBClient({ region: SES_REGION });
   const marshallOptions = {
-      convertEmptyValues: true, removeUndefinedValues: true, convertClassInstanceToMap: true,
+    convertEmptyValues: true, removeUndefinedValues: true, convertClassInstanceToMap: true,
   };
   const unmarshallOptions = {
-      wrapNumbers: false,
+    wrapNumbers: false,
   };
-  const translateConfig = {marshallOptions, unmarshallOptions};
+  const translateConfig = { marshallOptions, unmarshallOptions };
   return DynamoDBDocumentClient.from(ddbClient, translateConfig);
 }

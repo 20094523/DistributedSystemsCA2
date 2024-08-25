@@ -1,4 +1,4 @@
-import {SNSHandler} from "aws-lambda";
+import { SNSHandler } from "aws-lambda";
 import { SES_EMAIL_FROM, SES_EMAIL_TO, SES_REGION } from "../env";
 import {
   SESClient,
@@ -20,60 +20,60 @@ type ContactDetails = {
   message: string;
 };
 
-const client = new SESClient({region: SES_REGION});
+const client = new SESClient({ region: SES_REGION });
 
 export const handler: SNSHandler = async (event: any) => {
   console.log("Event ", JSON.stringify(event));
   for (const record of event.Records) {
-      const snsMessage = JSON.parse(record.Sns.Message);
+    const snsMessage = JSON.parse(record.Sns.Message);
 
-      if (snsMessage.Records) {
-          console.log("Record body ", JSON.stringify(snsMessage));
-          for (const messageRecord of snsMessage.Records) {
-              const s3e = messageRecord.s3;
-              const srcBucket = s3e.bucket.name;
-              // Object key may have spaces or unicode non-ASCII characters.
-              const srcKey = decodeURIComponent(s3e.object.key.replace(/\+/g, " "));
-              try {
-                  const {name, email, message}: ContactDetails = {
-                      name: "The Photo Album",
-                      email: SES_EMAIL_FROM,
-                      message: `We received your Image. Its URL is s3://${srcBucket}/${srcKey}`,
-                  };
-                  const params = sendEmailParams({name, email, message});
-                  await client.send(new SendEmailCommand(params));
-              } catch (error: unknown) {
-                  console.log("ERROR is: ", error);
-                  // return;
-              }
-          }
+    if (snsMessage.Records) {
+      console.log("Record body ", JSON.stringify(snsMessage));
+      for (const messageRecord of snsMessage.Records) {
+        const s3e = messageRecord.s3;
+        const srcBucket = s3e.bucket.name;
+        // Object key may have spaces or unicode non-ASCII characters.
+        const srcKey = decodeURIComponent(s3e.object.key.replace(/\+/g, " "));
+        try {
+          const { name, email, message }: ContactDetails = {
+            name: "The Photo Album",
+            email: SES_EMAIL_FROM,
+            message: `We received your Image. Its URL is s3://${srcBucket}/${srcKey}`,
+          };
+          const params = sendEmailParams({ name, email, message });
+          await client.send(new SendEmailCommand(params));
+        } catch (error: unknown) {
+          console.log("ERROR is: ", error);
+          // return;
+        }
       }
+    }
   }
 };
 
-function sendEmailParams({name, email, message}: ContactDetails) {
+function sendEmailParams({ name, email, message }: ContactDetails) {
   const parameters: SendEmailCommandInput = {
-      Destination: {
-          ToAddresses: [SES_EMAIL_TO],
+    Destination: {
+      ToAddresses: [SES_EMAIL_TO],
+    },
+    Message: {
+      Body: {
+        Html: {
+          Charset: "UTF-8",
+          Data: getHtmlContent({ name, email, message }),
+        },
       },
-      Message: {
-          Body: {
-              Html: {
-                  Charset: "UTF-8",
-                  Data: getHtmlContent({name, email, message}),
-              },
-          },
-          Subject: {
-              Charset: "UTF-8",
-              Data: `New image Upload`,
-          },
+      Subject: {
+        Charset: "UTF-8",
+        Data: `New image Upload`,
       },
-      Source: SES_EMAIL_FROM,
+    },
+    Source: SES_EMAIL_FROM,
   };
   return parameters;
 }
 
-function getHtmlContent({name, email, message}: ContactDetails) {
+function getHtmlContent({ name, email, message }: ContactDetails) {
   return `
   <html>
     <body>

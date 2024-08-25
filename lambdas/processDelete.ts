@@ -1,5 +1,5 @@
 /* eslint-disable import/extensions, import/no-absolute-path */
-import { SNSHandler } from 'aws-lambda';
+import { SNSHandler, SNSEvent } from 'aws-lambda';
 import {
     S3Client,
 } from "@aws-sdk/client-s3";
@@ -10,7 +10,7 @@ import { SES_REGION } from "env";
 const ddb = createDDbDocClient();
 const s3 = new S3Client();
 
-export const handler: SNSHandler = async (event) => {
+export const handler: SNSHandler = async (event: SNSEvent) => {
     console.log("Event ", event);
     for (const record of event.Records) {
 
@@ -24,21 +24,8 @@ export const handler: SNSHandler = async (event) => {
                 // Object key may have spaces or unicode non-ASCII characters.
                 const srcKey = decodeURIComponent(s3e.object.key.replace(/\+/g, " "));
                 // Infer the image type from the file suffix.
-                const typeMatch = srcKey.match(/\.([^.]*)$/);
-                if (!typeMatch) {
-                    console.log("Could not determine the image type.");
-                    throw new Error("Could not determine the image type. ");
-                }
-                // Check that the image type is supported
-                const imageType = typeMatch[1].toLowerCase();
-                if (imageType != "jpeg" && imageType != "png") {
-                    console.log(`Unsupported image type: ${imageType}`);
-                    throw new Error("Unsupported image type: ${imageType. ");
-                }
-                //delete command for object with srcKey
-
                 const ddbParams = {
-                    TableName: "Images",
+                    TableName: "ImagesTable",
                     Key: {
                         ImageName: srcKey,
                     }
@@ -60,7 +47,7 @@ export const handler: SNSHandler = async (event) => {
 
 
 function createDDbDocClient() {
-    const ddbClient = new DynamoDBClient({ region: SES_REGION});
+    const ddbClient = new DynamoDBClient({ region: SES_REGION });
     const marshallOptions = {
         convertEmptyValues: true, removeUndefinedValues: true, convertClassInstanceToMap: true,
     };
