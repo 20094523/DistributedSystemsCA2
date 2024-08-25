@@ -1,15 +1,10 @@
 /* eslint-disable import/extensions, import/no-absolute-path */
-import { SQSHandler } from "aws-lambda";
-import { SNSEvent, SNSHandler } from 'aws-lambda';
+import { SNSHandler } from 'aws-lambda';
 import {
-    GetObjectCommand,
-    PutObjectCommandInput,
-    GetObjectCommandInput,
     S3Client,
-    PutObjectCommand,
 } from "@aws-sdk/client-s3";
-import { DynamoDBClient, PutItemCommand, DeleteItemCommand } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, PutCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, DeleteCommand } from "@aws-sdk/lib-dynamodb";
 import { SES_REGION } from "env";
 
 const ddb = createDDbDocClient();
@@ -65,7 +60,7 @@ export const handler: SNSHandler = async (event) => {
 
 
 function createDDbDocClient() {
-    const ddbClient = new DynamoDBClient({ region: process.env.REGION });
+    const ddbClient = new DynamoDBClient({ region: SES_REGION});
     const marshallOptions = {
         convertEmptyValues: true, removeUndefinedValues: true, convertClassInstanceToMap: true,
     };

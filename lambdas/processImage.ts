@@ -2,10 +2,8 @@
 import { SQSHandler } from "aws-lambda";
 import {
   GetObjectCommand,
-  PutObjectCommandInput,
   GetObjectCommandInput,
   S3Client,
-  PutObjectCommand,
 } from "@aws-sdk/client-s3";
 //dynamoDB imports
 import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
@@ -71,7 +69,7 @@ export const handler: SQSHandler = async (event) => {
 };
 
 function createDDbDocClient() {
-  const ddbClient = new DynamoDBClient({region: process.env.REGION});
+  const ddbClient = new DynamoDBClient({region: SES_REGION});
   const marshallOptions = {
       convertEmptyValues: true, removeUndefinedValues: true, convertClassInstanceToMap: true,
   };

@@ -11,6 +11,8 @@ import * as iam from "aws-cdk-lib/aws-iam";
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import { Construct } from "constructs";
 import { SES_REGION } from "../env";
+import { DynamoEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
+import { StartingPosition } from "aws-cdk-lib/aws-lambda";
 
 export class EDAAppStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -32,9 +34,7 @@ export class EDAAppStack extends cdk.Stack {
     });
 
     // Integration infrastructure
-    const mailerQ = new sqs.Queue(this, "mailer-queue", {
-      receiveMessageWaitTime: cdk.Duration.seconds(10),
-    });
+
     const rejectionQueue = new sqs.Queue(this, "rejection-queue", {
       queueName: "RejectionQueue",
       receiveMessageWaitTime: cdk.Duration.seconds(10),
@@ -65,6 +65,13 @@ export class EDAAppStack extends cdk.Stack {
       entry: `${__dirname}/../lambdas/rejectionMailer.ts`,
     });
 
+    const deleteMailerFn = new lambdanode.NodejsFunction(this, "rejection-mailer-function", {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      memorySize: 1024,
+      timeout: cdk.Duration.seconds(3),
+      entry: `${__dirname}/../lambdas/deletionMailer.ts`,
+    });
+
     const processImageFn = new lambdanode.NodejsFunction(this, "process-image-function", {
       runtime: lambda.Runtime.NODEJS_18_X,
       entry: `${__dirname}/../lambdas/processImage.ts`,
@@ -77,7 +84,7 @@ export class EDAAppStack extends cdk.Stack {
     }
     );
 
-    const processDeleteFn = new lambdanode.NodejsFunction(this, "process-delete-function",{
+    const processDeleteFn = new lambdanode.NodejsFunction(this, "process-delete-function", {
       runtime: lambda.Runtime.NODEJS_18_X,
       entry: `${__dirname}/../lambdas/processDelete.ts`,
       timeout: cdk.Duration.seconds(3),
@@ -90,52 +97,84 @@ export class EDAAppStack extends cdk.Stack {
       memorySize: 1024,
       timeout: cdk.Duration.seconds(3),
       entry: `${__dirname}/../lambdas/processUpdate.ts`,
-  });
-
-
-
-
-    const newImageTopic = new sns.Topic(this, "NewImageTopic", {
-      displayName: "New Image topic",
     });
 
-    const deleteAndUpdate = new sns.Topic(this, "DeleteAndUpdate", {
-      displayName: "Topic for deleting and updating",
-    });
-    
+    const mainTopic = new sns.Topic(this, "MainTopic",
+      {
+        displayName: "Main Topic",
+      }
+    );
+
 
     // Event triggers
 
     imagesBucket.addEventNotification(
       s3.EventType.OBJECT_CREATED,
-      new s3n.SnsDestination(newImageTopic)
+      new s3n.SnsDestination(mainTopic)
     );
 
     imagesBucket.addEventNotification(
       s3.EventType.OBJECT_REMOVED,
-      new s3n.SnsDestination(deleteAndUpdate)
+      new s3n.SnsDestination(mainTopic)
     );
 
-    newImageTopic.addSubscription(new subs.SqsSubscription(imageProcessQueue));
+    //turn all subscriptions into one with a filter policy
 
-    newImageTopic.addSubscription(new subs.SqsSubscription(mailerQ));
+    mainTopic.addSubscription(
+      new subs.SqsSubscription(imageProcessQueue, {
+        filterPolicyWithMessageBody: {
+          Records: sns.FilterOrPolicy.policy({
+            eventName: sns.FilterOrPolicy.filter(
+              sns.SubscriptionFilter.stringFilter({
+                matchPrefixes: ["ObjectCreated:Put"],
+              })
+            ),
+          })
+        }
+      })
+    );
 
-    newImageTopic.addSubscription(new subs.SqsSubscription(rejectionQueue));
+    mainTopic.addSubscription(
+      new subs.LambdaSubscription(processDeleteFn, {
+        filterPolicyWithMessageBody: {
+          Records: sns.FilterOrPolicy.policy({
+            eventName: sns.FilterOrPolicy.filter(
+              sns.SubscriptionFilter.stringFilter({
+                allowlist: ["ObjectRemoved:Delete"],
+              })
+            ),
+          })
+        }
+      })
+    );
 
-    deleteAndUpdate.addSubscription(new subs.LambdaSubscription(processDeleteFn));
+    mainTopic.addSubscription(
+      new subs.LambdaSubscription(processUpdateFn, {
+        filterPolicy: {
+          comment_type: sns.SubscriptionFilter.stringFilter({
+            allowlist: ['Caption']
+          }),
+        },
+      })
+    );
 
-    deleteAndUpdate.addSubscription(new subs.LambdaSubscription(processUpdateFn));
-
+    mainTopic.addSubscription(new subs.LambdaSubscription(mailerFn, {
+      filterPolicyWithMessageBody: {
+          Records: sns.FilterOrPolicy.policy({
+              eventName: sns.FilterOrPolicy.filter(
+                  sns.SubscriptionFilter.stringFilter({
+                      allowlist: ["ObjectCreated:Put"],
+                  })
+              ),
+          })
+      }
+  })
+);
 
     const newImageEventSource = new events.SqsEventSource(imageProcessQueue, {
       batchSize: 5,
       maxBatchingWindow: cdk.Duration.seconds(10),
     });
-
-    const newImageMailEventSource = new events.SqsEventSource(mailerQ,{
-      batchSize: 5,
-      maxBatchingWindow: cdk.Duration.seconds(10),
-    })
 
     const newImageEventRejectSource = new events.SqsEventSource(rejectionQueue, {
       batchSize: 5,
@@ -144,9 +183,13 @@ export class EDAAppStack extends cdk.Stack {
 
     processImageFn.addEventSource(newImageEventSource);
 
-    mailerFn.addEventSource(newImageMailEventSource);
-
     rejectionMailerFn.addEventSource(newImageEventRejectSource);
+
+    deleteMailerFn.addEventSource(new DynamoEventSource(imagesTable, {
+      startingPosition: StartingPosition.TRIM_HORIZON,
+      batchSize: 5,
+      bisectBatchOnError: true,
+  }));
 
     // Permissions
 
@@ -167,7 +210,24 @@ export class EDAAppStack extends cdk.Stack {
       })
     );
 
+    processImageFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ["sqs:SendMessage"],
+      resources: [rejectionQueue.queueArn]
+  }));
+
     rejectionMailerFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "ses:SendEmail",
+          "ses:SendRawEmail",
+          "ses:SendTemplatedEmail",
+        ],
+        resources: ["*"],
+      })
+    );
+
+    deleteMailerFn.addToRolePolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: [
@@ -190,8 +250,8 @@ export class EDAAppStack extends cdk.Stack {
       value: imagesBucket.bucketName,
     });
 
-    new cdk.CfnOutput(this, "deleteAndUpdate", {
-      value: deleteAndUpdate.topicArn,
+    new cdk.CfnOutput(this, "mainTopic", {
+      value: mainTopic.topicArn,
     });
 
   }
