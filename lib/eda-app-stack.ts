@@ -65,7 +65,7 @@ export class EDAAppStack extends cdk.Stack {
       entry: `${__dirname}/../lambdas/rejectionMailer.ts`,
     });
 
-    const processImageFn = new lambdanode.NodejsFunction(this, "ProcessImageFn", {
+    const processImageFn = new lambdanode.NodejsFunction(this, "process-image-function", {
       runtime: lambda.Runtime.NODEJS_18_X,
       entry: `${__dirname}/../lambdas/processImage.ts`,
       timeout: cdk.Duration.seconds(15),
@@ -85,6 +85,15 @@ export class EDAAppStack extends cdk.Stack {
     }
     );
 
+    const processUpdateFn = new lambdanode.NodejsFunction(this, "process-update-function", {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      memorySize: 1024,
+      timeout: cdk.Duration.seconds(3),
+      entry: `${__dirname}/../lambdas/processUpdate.ts`,
+  });
+
+
+
 
     const newImageTopic = new sns.Topic(this, "NewImageTopic", {
       displayName: "New Image topic",
@@ -93,6 +102,7 @@ export class EDAAppStack extends cdk.Stack {
     const deleteAndUpdate = new sns.Topic(this, "DeleteAndUpdate", {
       displayName: "Topic for deleting and updating",
     });
+    
 
     // Event triggers
 
@@ -113,6 +123,9 @@ export class EDAAppStack extends cdk.Stack {
     newImageTopic.addSubscription(new subs.SqsSubscription(rejectionQueue));
 
     deleteAndUpdate.addSubscription(new subs.LambdaSubscription(processDeleteFn));
+
+    deleteAndUpdate.addSubscription(new subs.LambdaSubscription(processUpdateFn));
+
 
     const newImageEventSource = new events.SqsEventSource(imageProcessQueue, {
       batchSize: 5,
@@ -140,6 +153,7 @@ export class EDAAppStack extends cdk.Stack {
     imagesBucket.grantRead(processImageFn);
     imagesTable.grantReadWriteData(processImageFn);
     imagesTable.grantReadWriteData(processDeleteFn);
+    imagesTable.grantReadWriteData(processUpdateFn);
 
     mailerFn.addToRolePolicy(
       new iam.PolicyStatement({
