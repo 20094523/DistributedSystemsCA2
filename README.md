@@ -1,3 +1,24 @@
+## EDA Assignment - Distributed Systems.
+
+__Name:__ Dominik Martynski
+
+__YouTube Demo link__ 
 
 
-aws s3 cp test.txt s3://a-bucket/test.txt --metadata '{"x-amz-meta-cms-id":"34533452"}'
+
+### Phase 1.
+
+
++ Confirmation Mailer - Fully implemented.
++ Rejection Mailer - Fully implemented.
++ Process Image - Fully implemented.
+
+### Phase 2.
+
++ Update Function - Fully implemented.
++ Delete Function - Fully implemented.
+
+### Phase 3.
+
++ Delete Mailer - Fully implemented.
++ One SNS Topic - Fully implemented.
